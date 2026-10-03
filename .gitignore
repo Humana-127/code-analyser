@@ -1,0 +1,27 @@
+# Environment variables (contains API keys - never commit!)
+.env
+*.env
+
+# SQLite database
+*.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# VS Code
+.vscode/
+
+# Pyright / Pyrefly config (editor-local)
+pyrightconfig.json
+pyrefly.toml
+
+# OS files
+.DS_Store
+Thumbs.db

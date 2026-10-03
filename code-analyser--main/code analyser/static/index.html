@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Review & Complexity Analyzer</title>
+<style>
+:root{--bg:#0f1420;--panel:#171e2e;--line:#2a3550;--text:#e6ebf5;--mute:#8d99b5;--acc:#4dd4c0;--hi:#ff6b6b;--md:#ffc857;--lo:#7fb7ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:20px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+h1{grid-column:1/-1;margin:0;font-size:22px}h2{font-size:16px;margin:0 0 8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+textarea{width:100%;height:320px;background:#0b0f19;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:10px;font:13px/1.5 ui-monospace,Consolas,monospace;resize:vertical}
+.row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center}
+input,select{background:#0b0f19;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px}
+button{background:var(--acc);color:#04211d;border:0;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;transition:background 0.2s}
+button:hover{filter:brightness(1.1)}
+button:disabled{opacity:.5;cursor:not-allowed}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc)}
+.cx{display:flex;gap:10px;margin-bottom:10px}.cx div{flex:1;background:#0b0f19;border:1px solid var(--line);border-radius:6px;padding:10px;text-align:center}
+.cx b{display:block;font-size:20px;color:var(--acc)}.mute{color:var(--mute);font-size:13px}
+.issue{border-left:3px solid var(--lo);padding:4px 10px;margin:6px 0;background:#0b0f19}
+.issue.high{border-color:var(--hi)}.issue.medium{border-color:var(--md)}
+pre{background:#0b0f19;border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;font-size:13px}
+.hist{grid-column:1/-1}.hist button{background:#0b0f19;color:var(--text);border:1px solid var(--line);margin:3px 6px 3px 0;font-weight:400}
+#err{color:var(--hi);margin:8px 0 0}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+
+/* Key banner styles */
+.key-banner{grid-column:1/-1;border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;transition:all 0.3s ease}
+.key-banner.missing{background:rgba(255,200,87,0.08);border:1px solid rgba(255,200,87,0.4)}
+.key-banner.connected{background:rgba(77,212,192,0.06);border:1px solid rgba(77,212,192,0.3)}
+.key-banner .header{display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600}
+.badge.warn{background:var(--md);color:#1b1400}
+.badge.ok{background:var(--acc);color:#04211d}
+</style></head><body><main>
+<h1>Code Review & Complexity Analyzer</h1>
+
+<!-- API Key Banner -->
+<div id="key-card" class="key-banner missing">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="key-badge" class="badge warn">Action Required</span>
+      <b id="key-title">Gemini API Key is missing</b>
+      <span class="mute">Get a free key at Google AI Studio</span>
+    </div>
+    <button id="toggle-key-input" style="display:none;background:#0b0f19;color:var(--mute);border:1px solid var(--line);padding:4px 10px;font-size:12px">Change Key</button>
+  </div>
+  <div id="key-input-row" class="row" style="margin:0">
+    <input type="password" id="api-key-input" placeholder="Paste your Gemini API key here (starts with AIzaSy...)" style="flex:1;min-width:260px">
+    <button id="save-key-btn">Save Key</button>
+  </div>
+</div>
+
+<section class="panel"><h2>Your code</h2>
+<textarea id="code" placeholder="Paste code here, or upload a file below"></textarea>
+<div class="row">
+<input id="user" placeholder="Your name" value="guest" size="12">
+<select id="lang"><option>python</option><option>javascript</option><option>java</option><option>c</option><option>cpp</option></select>
+<input type="file" id="file" aria-label="Upload code file">
+<button id="go">Analyze code</button></div><p id="err"></p></section>
+<section class="panel" id="out"><h2>Analysis</h2><p class="mute">Results appear here.</p></section>
+<section class="panel hist"><h2>Previous analyses</h2><div id="hist" class="mute">None yet.</div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function showConnectedKey(){
+  $("key-card").className="key-banner connected";
+  $("key-badge").className="badge ok";
+  $("key-badge").textContent="Connected";
+  $("key-title").textContent="Gemini API is ready";
+  $("key-input-row").style.display="none";
+  $("toggle-key-input").style.display="block";
+}
+
+function showMissingKey(){
+  $("key-card").className="key-banner missing";
+  $("key-badge").className="badge warn";
+  $("key-badge").textContent="Action Required";
+  $("key-title").textContent="Gemini API Key is missing";
+  $("key-input-row").style.display="flex";
+  $("toggle-key-input").style.display="none";
+}
+
+$("toggle-key-input").onclick=()=>{
+  const isHidden = $("key-input-row").style.display === "none";
+  $("key-input-row").style.display = isHidden ? "flex" : "none";
+  $("toggle-key-input").textContent = isHidden ? "Close" : "Change Key";
+  if(isHidden) $("api-key-input").focus();
+};
+
+$("save-key-btn").onclick=async()=>{
+  const key = $("api-key-input").value.trim();
+  if(!key){
+    alert("Please enter a valid Gemini API key.");
+    return;
+  }
+  $("save-key-btn").disabled=true;
+  $("save-key-btn").textContent="Saving…";
+  try{
+    const r=await fetch("/api/key",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({api_key:key})
+    });
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||"Failed to save key");
+    localStorage.setItem("GEMINI_API_KEY", key);
+    $("api-key-input").value="";
+    $("err").textContent="";
+    showConnectedKey();
+  }catch(e){
+    alert("Error: "+e.message);
+  }finally{
+    $("save-key-btn").disabled=false;
+    $("save-key-btn").textContent="Save Key";
+  }
+};
+
+async function initKey(){
+  try{
+    const r=await fetch("/api/key/status");
+    const d=await r.json();
+    const localKey=localStorage.getItem("GEMINI_API_KEY");
+    if(d.has_key){
+      showConnectedKey();
+    }else if(localKey){
+      // Sync localKey to backend
+      fetch("/api/key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:localKey})});
+      showConnectedKey();
+    }else{
+      showMissingKey();
+    }
+  }catch(e){
+    showMissingKey();
+  }
+}
+
+function render(r, duration){
+ const durBadge = duration ? `<span class="badge ok" style="font-weight:bold">⚡ ${duration}s</span>` : '';
+ $("out").innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h2>Analysis</h2>${durBadge}</div>
+ <div class="cx"><div><b>${esc(r.quality_score)}/10</b>Quality</div><div><b>${esc(r.time_complexity)}</b>Time</div><div><b>${esc(r.space_complexity)}</b>Space</div></div>
+ <p>${esc(r.summary)}</p><p class="mute">${esc(r.complexity_explanation)}</p>
+ <h2>Issues</h2>${(r.issues||[]).map(i=>`<div class="issue ${esc(i.severity)}"><b>${esc(i.severity)}</b>${i.line?` (line ${esc(i.line)})`:""}: ${esc(i.message)}</div>`).join("")||"<p class='mute'>No issues found.</p>"}
+ <h2>Suggestions</h2><ul>${(r.suggestions||[]).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+ <h2>Optimized code</h2><pre>${esc(r.optimized_code)}</pre>`;
+}
+
+async function loadHist(){
+ try {
+  const r=await fetch("/api/history?username="+encodeURIComponent($("user").value||"guest"));
+  const h=await r.json();
+  if(!Array.isArray(h)){ $("hist").innerHTML="None yet."; return; }
+  $("hist").innerHTML=h.length?"":"None yet.";
+  h.forEach(x=>{
+   const b=document.createElement("button");
+   const tc = x.result?.time_complexity || "";
+   b.textContent=`#${x.id} ${x.language} ${tc ? '· ' + tc : ''} · ${x.created}`;
+   b.onclick=()=>{$("code").value=x.code;$("lang").value=x.language;render(x.result)};
+   $("hist").appendChild(b);
+  });
+ } catch(e){
+  $("hist").innerHTML="None yet.";
+ }
+}
+
+$("file").onchange=async e=>{const f=e.target.files[0];if(f)$("code").value=await f.text()};
+
+$("go").onclick=async()=>{
+ $("err").textContent="";$("go").disabled=true;
+ const t0 = Date.now();
+ $("go").textContent="⚡ Analyzing… 0.0s";
+ const timer = setInterval(()=>{
+   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+   $("go").textContent=`⚡ Analyzing… ${elapsed}s`;
+ }, 100);
+
+ try{
+  const localKey = localStorage.getItem("GEMINI_API_KEY");
+  const payload = {code:$("code").value,language:$("lang").value,username:$("user").value};
+  if(localKey) payload.api_key = localKey;
+
+  const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const d=await r.json();
+  clearInterval(timer);
+  const totalDuration = ((Date.now() - t0) / 1000).toFixed(2);
+  
+  if(!r.ok){
+    if(d.error && d.error.includes("GEMINI_API_KEY")) showMissingKey();
+    throw new Error(d.error);
+  }
+  showConnectedKey();
+  render(d.result, totalDuration);
+  loadHist();
+ }catch(e){
+  clearInterval(timer);
+  $("err").textContent=e.message;
+ }finally{
+  $("go").disabled=false;
+  $("go").textContent="⚡ Analyze code";
+ }
+};
+
+$("user").onchange=loadHist;
+loadHist();
+initKey();
+</script></body></html>
